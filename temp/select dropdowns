@@ -1,1 +1,443 @@
+---------------------- =====================  studentDetails.jsp      ============------------------------------------------------
+  ==================================================================================================================================
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.sql.*,StudentDetailes.DatabaseConnection" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Details</title>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#district').change(function() {
+                var districtCode = $(this).val();
+                $.ajax({
+                    type: 'POST',
+                    url: 'fetchData.jsp',
+                    data: {districtCode: districtCode, type: 'mandal'},
+                    success: function(response) {
+                        $('#mandal').html(response);
+                        $('#village').html('<option value="">Select Village</option>');
+                    }
+                });
+            });
 
+            $('#mandal').change(function() {
+                var mandalCode = $(this).val();
+                $.ajax({
+                    type: 'POST',
+                    url: 'fetchData.jsp',
+                    data: {mandalCode: mandalCode, type: 'village'},
+                    success: function(response) {
+                        $('#village').html(response);
+                    }
+                });
+            });
+
+            $('#village').change(function() {
+                var villageCode = $(this).val();
+                $.ajax({
+                    type: 'POST',
+                    url: 'fetchData.jsp',
+                    data: {villageCode: villageCode, type: 'students'},
+                    success: function(response) {
+                        $('#studentDetails').html(response);
+                    }
+                });
+            });
+            // Code for handling search bar
+            $('#searchButton').click(function() {
+                var searchQuery = $('#searchQuery').val();
+                $.ajax({
+                    type: 'POST',
+                    url: 'fetchData.jsp',
+                    data: {searchQuery: searchQuery, type: 'search'},
+                    success: function(response) {
+                        $('#studentDetails').html(response);
+                    }
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Student Details</h1>
+        <form method="post">
+            <label for="district">District:</label>
+            <select id="district" name="district">
+                <option value="">Select District</option>
+                <%
+                    try (Connection con = DatabaseConnection.getConnection()) {
+                        Statement stmt = con.createStatement();
+                        ResultSet rs = stmt.executeQuery("call Distict(1)");
+                        while (rs.next()) {
+                %>
+                            <option value="<%= rs.getString("district_code") %>"><%= rs.getString("district_name") %></option>
+                <%
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                %>
+            </select>
+
+            <label for="mandal">Mandal:</label>
+            <select id="mandal" name="mandal">
+                <option value="">Select Mandal</option>
+            </select>
+
+            <label for="village">Village:</label>
+            <select id="village" name="village">
+                <option value="">Select Village</option>
+            </select>
+        </form>
+        <!-- Search bar -->
+        <div class="search-bar">
+            <input type="text" id="searchQuery" placeholder="Search by student name">
+            <button id="searchButton" type="button">Search</button>
+        </div>
+
+        <div id="studentDetails">
+            <!-- Student details will be displayed here -->
+        </div>
+    </div>
+</body>
+</html>
+------------------------------------------------------------------------------======================================------------------------------------------
+===============================================          fetchData.jsp          =================================================
+
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.sql.*,StudentDetailes. DatabaseConnection" %>
+<%
+    String type = request.getParameter("type");
+    String districtCode = request.getParameter("districtCode");
+    String mandalCode = request.getParameter("mandalCode");
+    String villageCode = request.getParameter("villageCode");
+    String searchQuery = request.getParameter("searchQuery");
+
+    try (Connection con = DatabaseConnection.getConnection()) {
+        CallableStatement cstmt;
+        ResultSet rs;
+
+        if ("mandal".equals(type)) {
+            cstmt = con.prepareCall("{CALL mandal(?)}");
+            cstmt.setString(1, districtCode);
+            rs = cstmt.executeQuery();
+            out.println("<option value=''>Select Mandal</option>");
+            while (rs.next()) {
+                out.println("<option value='" + rs.getString("mandal_code") + "'>" + rs.getString("mandal_name") + "</option>");
+            }
+        } else if ("village".equals(type)) {
+            cstmt = con.prepareCall("{CALL getVillages(?)}");
+            cstmt.setString(1, mandalCode);
+            rs = cstmt.executeQuery();
+            out.println("<option value=''>Select Village</option>");
+            while (rs.next()) {
+                out.println("<option value='" + rs.getString("Udise_Code") + "'>" + rs.getString("school_name") + "</option>");
+            }
+        } else if ("students".equals(type)) {
+            cstmt = con.prepareCall("{call student(?)}");
+            cstmt.setString(1, villageCode);
+            rs = cstmt.executeQuery();
+            out.println("<table>");
+            out.println("<tr><th>ID</th><th>Name</th><th>Age</th><th>Class</th><th>Marks</th><th>Actions</th></tr>");
+            while (rs.next()) {
+                out.println("<tr>");
+                out.println("<td>" + rs.getString("schoolid") + "</td>");
+                out.println("<td>" + rs.getString("name") + "</td>");
+                out.println("<td>" + rs.getString("age") + "</td>");
+                out.println("<td>" + rs.getString("clas") + "</td>");
+                out.println("<td>" + rs.getString("marks") + "</td>");
+                out.println("<td>");
+                out.println("<form action='updateStudent.jsp' method='post' style='display:inline;'>");
+                out.println("<input type='hidden' name='id' value='" + rs.getString("schoolid") + "'/>");
+                out.println("<input type='submit' value='Update'/>");
+                out.println("</form>");
+                out.println("<form action='deleteStudent.jsp' method='post' style='display:inline;'>");
+                out.println("<input type='hidden' name='id' value='" + rs.getString("schoolid") + "'/>");
+                out.println("<input type='submit' value='Delete'/>");
+                out.println("</form>");
+                out.println("</td>");
+                out.println("</tr>");
+            }
+            out.println("</table>");
+        }
+        else if ("search".equals(type)) { // Search query handling
+            String query = "SELECT * FROM school WHERE name LIKE ?";
+            PreparedStatement pstmt = con.prepareStatement(query);
+            pstmt.setString(1, "%" + searchQuery + "%");
+            rs = pstmt.executeQuery();
+            out.println("<table>");
+            out.println("<tr><th>ID</th><th>Name</th><th>Age</th><th>Class</th><th>Marks</th><th>Actions</th></tr>");
+            while (rs.next()) {
+                out.println("<tr>");
+                out.println("<td>" + rs.getString("schoolid") + "</td>");
+                out.println("<td>" + rs.getString("name") + "</td>");
+                out.println("<td>" + rs.getString("age") + "</td>");
+                out.println("<td>" + rs.getString("clas") + "</td>");
+                out.println("<td>" + rs.getString("marks") + "</td>");
+                out.println("<td>");
+                out.println("<form action='updateStudent.jsp' method='post' style='display:inline;'>");
+                out.println("<input type='hidden' name='id' value='" + rs.getString("schoolid") + "'/>");
+                out.println("<input type='submit' value='Update'/>");
+                out.println("</form>");
+                out.println("<form action='deleteStudent.jsp' method='post' style='display:inline;'>");
+                out.println("<input type='hidden' name='id' value='" + rs.getString("schoolid") + "'/>");
+                out.println("<input type='submit' value='Delete'/>");
+                out.println("</form>");
+                out.println("</td>");
+                out.println("</tr>");
+            }
+            out.println("</table>");
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+%>
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+================================================================================================================================================
+==========================================          updateStudent.jsp           =============================
+ 
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.sql.*, java.util.*" %>
+<%
+    String schoolid = request.getParameter("schoolid");
+    String name = request.getParameter("name");
+    String age = request.getParameter("age");
+    String studentClass = request.getParameter("clas");
+    String marks = request.getParameter("marks");
+    String villageCode = request.getParameter("villageCode");
+
+    try {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/bank", "root", "cj007");
+        if (request.getMethod().equalsIgnoreCase("POST")) {
+            String query = "UPDATE school SET name=?, age=?, clas=?, marks=?, Udise_Code=? WHERE Udise_Code=?";
+            PreparedStatement pstmt = con.prepareStatement(query);
+            pstmt.setString(1, name);
+            pstmt.setString(2, age);
+            pstmt.setString(3, studentClass);
+            pstmt.setString(4, marks);
+            pstmt.setString(5, villageCode);
+            pstmt.setString(6, schoolid);
+            pstmt.executeUpdate();
+            response.sendRedirect("studentDetails.jsp");
+        } else {
+            String query = "SELECT * FROM school WHERE schoolid=?";
+            PreparedStatement pstmt = con.prepareStatement(query);
+            pstmt.setString(1, schoolid);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+%>
+                <form method="post">
+                    <label for="name">Name:</label>
+                    <input type="text" id="name" name="name" value="<%= rs.getString("name") %>"/><br/>
+                    <label for="age">Age:</label>
+                    <input type="text" id="age" name="age" value="<%= rs.getString("age") %>"/><br/>
+                    <label for="class">Class:</label>
+                    <input type="text" id="class" name="class" value="<%= rs.getString("clas") %>"/><br/>
+                    <label for="marks">Marks:</label>
+                    <input type="text" id="marks" name="marks" value="<%= rs.getString("marks") %>"/><br/>
+                    <label for="villageCode">Village Code:</label>
+                    <input type="text" id="villageCode" name="villageCode" value="<%= rs.getString("Udise_Code") %>"/><br/>
+                    <input type="hidden" name="id" value="<%= rs.getString("id") %>"/>
+                    <input type="submit" value="Update"/>
+                </form>
+<%
+            }
+        }
+        con.close();
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+%>
+----------------========------------------------------================================================-------------------------------------------------------
+======================================================deleteStudent.jsp==========================================================
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.sql.*, java.util.*" %>
+<%
+    String id = request.getParameter("id");     
+
+    try {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/Bank", "root", "cj123");
+        String query = "DELETE FROM school WHERE schoolid=?";
+        PreparedStatement pstmt = con.prepareStatement(query);
+        pstmt.setString(1, id);
+        pstmt.executeUpdate();
+        con.close();
+        response.sendRedirect("studentDetails.jsp");
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+%>
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+===============================================  addStudent.jsp  ============================================================================
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.sql.*, java.util.*" %>
+<%
+    String name = request.getParameter("name");
+    String age = request.getParameter("age");
+    String studentClass = request.getParameter("class");
+    String marks = request.getParameter("marks");
+    String villageCode = request.getParameter("villageCode");
+
+    try {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/bank", "root", "cj123");
+        if (request.getMethod().equalsIgnoreCase("POST")) {
+            String query = "INSERT INTO school (name, age, clas, marks, Udise_Code) VALUES (?, ?, ?, ?, ?)";
+            PreparedStatement pstmt = con.prepareStatement(query);
+            pstmt.setString(1, name);
+            pstmt.setString(2, age);
+            pstmt.setString(3, studentClass);
+            pstmt.setString(4, marks);
+            pstmt.setString(5, villageCode);
+            pstmt.executeUpdate();
+            con.close();
+            response.sendRedirect("studentDetails.jsp");
+        } else {
+%>
+            <form method="post">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name"/><br/>
+                <label for="age">Age:</label>
+                <input type="text" id="age" name="age"/><br/>
+                <label for="class">Class:</label>
+                <input type="text" id="class" name="class"/><br/>
+                <label for="marks">Marks:</label>
+                <input type="text" id="marks" name="marks"/><br/>
+                <label for="villageCode">Village Code:</label>
+                <input type="text" id="villageCode" name="villageCode"/><br/>
+                <input type="submit" value="Add Student"/>
+            </form>
+<%
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+%>
+-------------------------------------------------------------------------------------------------------------------------------------
+============================================  styless.css   ==================================================================
+/* General Reset */
+body, h1, form, select, table, th, td {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+.container {
+    width: 80%;
+    margin: auto;
+    text-align: center;
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+form {
+    margin-bottom: 20px;
+}
+
+label {
+    margin-right: 10px;
+}
+
+select {
+    padding: 8px;
+    margin-right: 20px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+table, th, td {
+    border: 1px solid #ccc;
+}
+
+th, td {
+    padding: 10px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+}
+
+button, input[type="submit"] {
+    padding: 10px 20px;
+    margin: 5px 0;
+    border: none;
+    border-radius: 4px;
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover, input[type="submit"]:hover {
+    background-color: #45a049;
+}
+--------------------------------------------------------------------------------------------------------------------------------------
+==========================================================   DatabaseUtil   ===============================================================================
+package StudentDetailes;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class DatabaseUtil {
+    private static final String URL = "jdbc:mysql://localhost:3306/bank";
+    private static final String USER = "root";
+    private static final String PASSWORD = "cj007";
+
+    public static Connection getConnection() throws SQLException, ClassNotFoundException {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        return DriverManager.getConnection(URL, USER, PASSWORD);
+    }
+
+    public static ResultSet getStudentData() throws SQLException, ClassNotFoundException {
+        Connection conn = getConnection();
+        Statement stmt = conn.createStatement();
+        String query = "SELECT schoolid, name, age, marks FROM student";
+        return stmt.executeQuery(query);
+    }
+}
+--------------------------------------------------------------------------------------------------------------------------------------------
+=================================================    DatabaseConnection   ===================================================================================
+package StudentDetailes;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+public class DatabaseConnection {
+    private static final String URL = "jdbc:mysql://localhost:3306/bank";
+    private static final String USERNAME = "root";
+    private static final String PASSWORD = "cj007";
+
+    public static Connection getConnection() throws SQLException, ClassNotFoundException {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        return DriverManager.getConnection(URL, USERNAME, PASSWORD);
+    }
+}
